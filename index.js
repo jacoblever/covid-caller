@@ -1,4 +1,4 @@
-const http = require("http");
+const express = require('express')
 
 /*
 TODO:
@@ -60,9 +60,12 @@ let getOrCreateConference = (callId) => {
   return conference;
 }
 
+const app = express()
+const port = 3000
+
 let db = [];
 
-const app = http.createServer((request, response) => {
+app.post('/', (request, response) => {
   let welcomeMessage = "Welcome to COVID Caller! Hold on a moment while we find someone for you to talk to.";
   let timeNow = Date.now();
 
@@ -83,4 +86,4 @@ const app = http.createServer((request, response) => {
   });
 });
 
-app.listen(3000);
+app.listen(port, () => console.log(`COVID Caller listening at http://localhost:${port}`))
