@@ -4,13 +4,13 @@
   "description": "Covid Caller",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "sam build && sam local start-api --env-vars=.local-env.json",
+    "deploy": "sam build && sam deploy",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Jacob Lever",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.17.1",
-    "http": "0.0.1-security"
+    "aws-sdk": "^2.655.0"
   }
 }

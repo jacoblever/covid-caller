@@ -1,4 +1,8 @@
-const express = require('express')
+const AWS = require('aws-sdk');
+
+AWS.config.update({region:  process.env.AWS_REGION});
+
+const ddb = new AWS.DynamoDB.DocumentClient({ apiVersion: '2012-08-10', region: process.env.AWS_REGION });
 
 /*
 TODO:
@@ -12,24 +16,12 @@ TODO:
 - cost?
 */
 
-let respondWithXml = (response, xml) => {
-  response.writeHead(200, {"Content-Type": "text/xml"});
-  response.write(`<?xml version="1.0" encoding="UTF-8"?>${xml}`);
-  response.end();
-}
-
-let getBody = (request) => {
-  var promise = new Promise(function(resolve, reject) {
-    let body = '';
-    request.on('data', chunk => {
-        body += chunk.toString(); // convert Buffer to string
-    });
-  
-    request.on('end', () => {
-      resolve(parseQuery(body));
-    });
-  });
-  return promise;
+let respondWithXml = (xml) => {
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'text/xml' },
+    body: `<?xml version="1.0" encoding="UTF-8"?>${xml}`,
+  };
 }
 
 let parseQuery = (queryString) => {
@@ -42,59 +34,74 @@ let parseQuery = (queryString) => {
   return query;
 }
 
-let getOrCreateConference = (callId) => {
-  console.log(`Call ${callId}: db ${db}`);
-  let conferencesWithSpace = db.filter(x => {
-    return x.participants.length < 2 && x.ended === false
-  });
-  
+let getOrCreateConference = async (callId) => {
+  let queryParams = {
+    TableName: process.env.DYNAMO_DB_TABLE_NAME,
+    IndexName: 'JoinableConferences',
+    KeyConditionExpression: 'isJoinable = :val',
+    ExpressionAttributeValues: {
+      ':val': 'yes',
+    }
+  };
+  let conferencesWithSpace = (await ddb.query(queryParams).promise()).Items;
+
   if (conferencesWithSpace.length > 0) {
     let conferenceToJoin = conferencesWithSpace[0];
-    conferenceToJoin.participants.push(callId);
+    
+    let updateParams = {
+      TableName: process.env.DYNAMO_DB_TABLE_NAME,
+      Key: { conferenceName: conferenceToJoin.conferenceName },
+      UpdateExpression: 'add participants :participant remove isJoinable',
+      ExpressionAttributeValues: {
+        ':participant' : ddb.createSet([callId]),
+      }
+    };
+    await ddb.update(updateParams).promise();
     return conferenceToJoin;
-  } 
+  }
 
   let conferenceName = callId;
+
   let conference = {
-    name: conferenceName,
-    participants: [callId],
+    conferenceName: conferenceName,
+    participants: ddb.createSet([callId]),
+    isJoinable: 'yes',
     ended: false,
-  }
-  db.push(conference);
+  };
+
+  let params = {
+    TableName: process.env.DYNAMO_DB_TABLE_NAME,
+    Item: conference,
+  };
+  await ddb.put(params).promise();
   return conference;
 }
 
-const app = express()
-const port = 3000
+exports.incomingCall = async event => {
+  let body = parseQuery(event.body);
 
-let db = [];
-
-app.post('/', (request, response) => {
   let welcomeMessage = "Welcome to COVID Caller! Hold on a moment while we find someone for you to talk to.";
+  let callId = body['CallSid'];
 
-  getBody(request).then((body) => {
-    let callId = body['CallSid'];
-
-    console.log(`Call ${callId}: Sending welcome message...`)
-    let responseBody = `
+  console.log(`Call ${callId}: Sending welcome message...`);
+  let responseBody = `
 <Response>
   <Say voice="alice">${welcomeMessage}</Say>
   <Redirect method="POST">./find-friend</Redirect>
 </Response>`;
-  respondWithXml(response, responseBody);
-  });
-})
+  return respondWithXml(responseBody);
+};
 
-app.post('/find-friend', (request, response) => {
-  getBody(request).then((body) => {
-    let callId = body['CallSid'];
+exports.findFriend = async event => {
+  let body = parseQuery(event.body);
+  let callId = body['CallSid'];
+  console.log(`Call ${callId}: Finding Conference...`);
 
-    console.log(`Call ${callId}: Finding Conference...`);
-    var conference = getOrCreateConference(callId);
-    console.log(`Call ${callId}: Joining conference ${conference.name}`);
+  var conference = await getOrCreateConference(callId);
+  console.log(`Call ${callId}: Joining conference ${conference.conferenceName}`);
 
-    let endMessage = "Your partner has hung up. We hope you enjoyed your conversation with them. See you next time, Goodbye!";
-    let responseBody = `
+  let endMessage = "Your partner has hung up. We hope you enjoyed your conversation with them. See you next time, Goodbye!";
+  let responseBody = `
 <Response>
   <Dial>
     <Conference
@@ -102,27 +109,30 @@ app.post('/find-friend', (request, response) => {
       statusCallback="./conference-callback"
       statusCallbackEvent="leave"
       endConferenceOnExit="true">
-        ${conference.name}
+        ${conference.conferenceName}
     </Conference>
   </Dial>
   <Say voice="alice">${endMessage}</Say>
 </Response>`;
-  respondWithXml(response, responseBody);
-  });
-})
+  return respondWithXml(responseBody)
+};
 
-app.post('/conference-callback', (request, response) => {
-  getBody(request).then((body) => {
-    let callId = body['CallSid'];
-    if (body['StatusCallbackEvent'] === 'participant-leave') {
-      let conferenceName = body['FriendlyName'];
-      let conference = db.filter(x => x.name === conferenceName)[0];
-      if (conference) {
-        console.log(`Call ${callId}: Left conference ${conference.name}`);
-        conference.ended = true;
+exports.conferenceCallback = async event => {
+  let body = parseQuery(event.body);
+  let callId = body['CallSid'];
+  if (body['StatusCallbackEvent'] === 'participant-leave') {
+    let conferenceName = body['FriendlyName'];
+
+    let updateParams = {
+      TableName: process.env.DYNAMO_DB_TABLE_NAME,
+      Key: { conferenceName: conferenceName },
+      UpdateExpression: 'set ended=:true remove isJoinable',
+      ExpressionAttributeValues: {
+        ':true' : true,
       }
-    }
-  });
-})
-
-app.listen(port, () => console.log(`COVID Caller listening at http://localhost:${port}`))
+    };
+    await ddb.update(updateParams).promise();
+    console.log(`Call ${callId}: Left conference ${conferenceName}`);
+  }
+  return { statusCode: 204 };
+};

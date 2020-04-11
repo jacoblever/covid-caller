@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "covid-caller"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1hoa4cv2sc075"
+s3_prefix = "covid-caller"
+region = "eu-west-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "ApiDomain=covid-caller.jacoblever.dev"

@@ -1,0 +1,11 @@
+{
+  "IncomingCallFunction": {
+    "DYNAMO_DB_TABLE_NAME": "covid-caller-DynamoTable-RSHTR26X0S1O"
+  },
+  "FindFriendFunction": {
+    "DYNAMO_DB_TABLE_NAME": "covid-caller-DynamoTable-RSHTR26X0S1O"
+  },
+  "ConferenceCallbackFunction": {
+    "DYNAMO_DB_TABLE_NAME": "covid-caller-DynamoTable-RSHTR26X0S1O"
+  }
+}

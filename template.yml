@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  COVID Caller
+Parameters:
+  ApiDomain:
+    Type: String
+    Description: The domain to use for this API
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs12.x
+    CodeUri: ./
+    Environment:
+      Variables:
+        DYNAMO_DB_TABLE_NAME: !Ref DynamoTable
+
+Resources:
+  Domain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      CertificateArn: arn:aws:acm:us-east-1:350413574090:certificate/f316a1cb-dcb1-41a8-aa48-ea2ad9c1ab91
+      DomainName: !Ref ApiDomain
+      EndpointConfiguration: 
+        Types: 
+          - EDGE
+  DynamoTable: # The database must defined before the lambda functions
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        - AttributeName: conferenceName
+          AttributeType: S
+        - AttributeName: isJoinable
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: conferenceName
+          KeyType: HASH
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      GlobalSecondaryIndexes: 
+        - 
+          IndexName: "JoinableConferences"
+          KeySchema: 
+            - 
+              AttributeName: "isJoinable"
+              KeyType: "HASH"
+          Projection: 
+            NonKeyAttributes: 
+              - "participants"
+            ProjectionType: "INCLUDE"
+          ProvisionedThroughput: 
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: live
+  IncomingCallFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.incomingCall
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoTable
+      Events:
+        AnyApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /incoming-call
+            Method: POST
+  FindFriendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.findFriend
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoTable
+      Events:
+        AnyApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /find-friend
+            Method: POST
+  ConferenceCallbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.conferenceCallback
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoTable
+      Events:
+        AnyApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /conference-callback
+            Method: POST
+  DomainApiBasePathMapping:  
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties: 
+      DomainName: !Ref ApiDomain
+      RestApiId: !Ref ApiGatewayApi
+      Stage: live
+    DependsOn: ApiGatewayApiliveStage
+
+Outputs:
+  CloudFrontDomain:
+    Description: "The CloudFront URL for this deployment"
+    Value: !GetAtt Domain.DistributionDomainName
+  DynamoTableName:
+    Description: "The DynamoDB table name for this deployment"
+    Value: !Ref DynamoTable
