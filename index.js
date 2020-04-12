@@ -1,9 +1,6 @@
-const AWS = require('aws-sdk');
+const Database = require('./database.js')
 
-AWS.config.update({region:  process.env.AWS_REGION});
-
-const ddb = new AWS.DynamoDB.DocumentClient({ apiVersion: '2012-08-10', region: process.env.AWS_REGION });
-
+let db = new Database();
 /*
 TODO:
 - welcome message X
@@ -35,46 +32,16 @@ let parseQuery = (queryString) => {
 }
 
 let getOrCreateConference = async (callId) => {
-  let queryParams = {
-    TableName: process.env.DYNAMO_DB_TABLE_NAME,
-    IndexName: 'JoinableConferences',
-    KeyConditionExpression: 'isJoinable = :val',
-    ExpressionAttributeValues: {
-      ':val': 'yes',
-    }
-  };
-  let conferencesWithSpace = (await ddb.query(queryParams).promise()).Items;
+  let conferencesWithSpace = await db.getJoinableConferences();
 
   if (conferencesWithSpace.length > 0) {
     let conferenceToJoin = conferencesWithSpace[0];
-    
-    let updateParams = {
-      TableName: process.env.DYNAMO_DB_TABLE_NAME,
-      Key: { conferenceName: conferenceToJoin.conferenceName },
-      UpdateExpression: 'add participants :participant remove isJoinable',
-      ExpressionAttributeValues: {
-        ':participant' : ddb.createSet([callId]),
-      }
-    };
-    await ddb.update(updateParams).promise();
+    await db.joinExistingConference(conferenceToJoin.conferenceName, callId);
     return conferenceToJoin;
   }
 
   let conferenceName = callId;
-
-  let conference = {
-    conferenceName: conferenceName,
-    participants: ddb.createSet([callId]),
-    isJoinable: 'yes',
-    ended: false,
-  };
-
-  let params = {
-    TableName: process.env.DYNAMO_DB_TABLE_NAME,
-    Item: conference,
-  };
-  await ddb.put(params).promise();
-  return conference;
+  return await db.createConference(conferenceName, callId);
 }
 
 exports.incomingCall = async event => {
@@ -122,16 +89,7 @@ exports.conferenceCallback = async event => {
   let callId = body['CallSid'];
   if (body['StatusCallbackEvent'] === 'participant-leave') {
     let conferenceName = body['FriendlyName'];
-
-    let updateParams = {
-      TableName: process.env.DYNAMO_DB_TABLE_NAME,
-      Key: { conferenceName: conferenceName },
-      UpdateExpression: 'set ended=:true remove isJoinable',
-      ExpressionAttributeValues: {
-        ':true' : true,
-      }
-    };
-    await ddb.update(updateParams).promise();
+    await db.endConference(conferenceName);
     console.log(`Call ${callId}: Left conference ${conferenceName}`);
   }
   return { statusCode: 204 };
