@@ -1,6 +1,7 @@
 const axios = require('axios');
 const querystring = require('querystring');
 const xml2js = require('xml2js');
+const url = require('url');
 const readline = require('readline').createInterface({
     input: process.stdin,
     output: process.stdout
@@ -21,35 +22,61 @@ let askToHangup = () => {
     });
 }
 
+let post = async (url, data) => {
+    console.log(`POST ${url.toString()} - start`);
+
+    let response = await axios.post(url.toString(), querystring.stringify(data));
+    console.log(response.data);
+
+    console.log(`POST ${url.toString()} - done`);
+    return response.data;
+};
+
+let incomingCall = async (url, callId) => {
+    let response = await post(url, { CallSid: callId });
+    let parsed = await xml2js.parseStringPromise(response);
+
+    let redirectUrl = parsed['Response']['Redirect'][0]['_'].trim();
+    return { redirectUrl: redirectUrl };
+};
+
+let findFreind = async (url, callId) => {
+    let response = await post(url, { CallSid: callId });
+    let parsed = await xml2js.parseStringPromise(response);
+
+    let conferenceName = parsed['Response']['Dial'][0]['Conference'][0]['_'].trim();
+    let statusCallbackUrl = parsed['Response']['Dial'][0]['Conference'][0]['$']['statusCallback'].trim();
+    return { conferenceName: conferenceName, statusCallbackUrl: statusCallbackUrl };
+};
+
+let conferenceCallback = async (url, callId, conferenceName) => {
+    let confCallbackData = { CallSid: callId, StatusCallbackEvent: 'participant-leave', FriendlyName: conferenceName }
+    await post(url, confCallbackData);
+    return;
+};
+
 let run = async (host) => {
     try {
         let callId = uuidv4();
-        
-        console.log("POST /incoming-call - start");
-        let incomingResponse = await axios.post(`${host}/incoming-call`, querystring.stringify({ CallSid: callId }));
-        console.log(incomingResponse.data);
-        console.log("POST /incoming-call - done");
+        let incomingCallUrl = new url.URL('./incoming-call', host);
+    
+        let findFreindRelativeUrl = (await incomingCall(incomingCallUrl, callId)).redirectUrl;
+        let findFreindUrl = new url.URL(findFreindRelativeUrl, host);
 
-        await sleep(2000);
+        await sleep(500);
         
-        console.log("POST /find-friend - start");
-        let friendResponse = await axios.post(`${host}/find-friend`, querystring.stringify({ CallSid: callId }));
-        console.log(friendResponse.data);
-        let parsedFriendResponse = await xml2js.parseStringPromise(friendResponse.data);
-        console.log("POST /find-friend - done");
-        let conferenceName = parsedFriendResponse['Response']['Dial'][0]['Conference'][0]['_'].trim();
-        
+        let { conferenceName, statusCallbackUrl } = await findFreind(findFreindUrl, callId);
+        let conferenceCallbackUrl = new url.URL(statusCallbackUrl, host);
+
         await askToHangup();
 
-        console.log("POST /conference-callback - start");
-        let confCallbackData = { CallSid: callId, StatusCallbackEvent: 'participant-leave', FriendlyName: conferenceName }
-        let confCallbackResponse = await axios.post(`${host}/conference-callback`, querystring.stringify(confCallbackData));
-        console.log(confCallbackResponse.data);
-        console.log("POST /conference-callback - done");
+        await conferenceCallback(conferenceCallbackUrl, callId, conferenceName);
+
         process.exit(0);
     } catch (err) {
         console.log(err);
+        process.exit(1);
     }
 }
 
-run('http://localhost:3000');
+run('http://localhost:3000/');
