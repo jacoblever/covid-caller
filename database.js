@@ -3,6 +3,8 @@ const AWS = require('aws-sdk');
 AWS.config.update({region:  process.env.AWS_REGION});
 const ddb = new AWS.DynamoDB.DocumentClient({ apiVersion: '2012-08-10', region: process.env.AWS_REGION });
 
+const _24_HOURS = 24 * 60 * 60;
+
 class Database {
   async getJoinableConferences() {
     let queryParams = {
@@ -35,6 +37,7 @@ class Database {
       participants: ddb.createSet([callId]),
       isJoinable: 'yes',
       ended: false,
+      timeToLive: Math.floor((new Date()).getTime() / 1000) + _24_HOURS,
     };
   
     let params = {
