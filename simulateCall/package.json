@@ -1,0 +1,16 @@
+{
+  "name": "simulate-call",
+  "version": "1.0.0",
+  "description": "",
+  "main": "call.js",
+  "scripts": {
+    "start": "node call.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.19.2",
+    "querystring": "^0.2.0",
+    "xml2js": "^0.4.23"
+  }
+}
