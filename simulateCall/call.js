@@ -79,4 +79,9 @@ let run = async (host) => {
     }
 }
 
-run('http://localhost:3000/');
+var host = 'http://localhost:3000/';
+if (process.argv.includes('--prod')) {
+    host = 'https://covid-caller.jacoblever.dev/';
+}
+
+run(host);
