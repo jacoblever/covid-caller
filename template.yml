@@ -20,7 +20,7 @@ Resources:
   Domain:
     Type: AWS::ApiGateway::DomainName
     Properties:
-      CertificateArn: arn:aws:acm:us-east-1:350413574090:certificate/f316a1cb-dcb1-41a8-aa48-ea2ad9c1ab91
+      CertificateArn: arn:aws:acm:us-east-1:350413574090:certificate/46a1eb6a-e50f-4f4b-95ce-d72a4074be51
       DomainName: !Ref ApiDomain
       EndpointConfiguration: 
         Types: 

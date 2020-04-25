@@ -1,6 +1,7 @@
 const AWS = require('aws-sdk');
 
-AWS.config.update({region:  process.env.AWS_REGION});
+AWS.config.update({ region: process.env.AWS_REGION });
+// Docs: https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/DynamoDB/DocumentClient.html
 const ddb = new AWS.DynamoDB.DocumentClient({ apiVersion: '2012-08-10', region: process.env.AWS_REGION });
 
 const _24_HOURS = 24 * 60 * 60;
